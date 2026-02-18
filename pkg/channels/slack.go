@@ -159,7 +159,6 @@ func (c *SlackChannel) sendWithAttachments(ctx context.Context, channelID, threa
 		if err != nil {
 			return fmt.Errorf("failed to open attachment %s: %w", attachment.Path, err)
 		}
-		defer file.Close()
 
 		params := slack.UploadFileV2Parameters{
 			Channel:         channelID,
@@ -170,11 +169,13 @@ func (c *SlackChannel) sendWithAttachments(ctx context.Context, channelID, threa
 		}
 
 		_, err = c.api.UploadFileV2Context(ctx, params)
+		file.Close()
+		
 		if err != nil {
 			return fmt.Errorf("failed to upload file %s: %w", attachment.Filename, err)
 		}
 
-		// Only use content for first attachment
+		// Only use content for first attachment to avoid duplicate comments
 		content = ""
 	}
 

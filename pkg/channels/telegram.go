@@ -202,7 +202,6 @@ func (c *TelegramChannel) sendWithAttachments(ctx context.Context, chatID int64,
 		if err != nil {
 			return fmt.Errorf("failed to open attachment %s: %w", attachment.Path, err)
 		}
-		defer file.Close()
 
 		document := tu.Document(
 			tu.ID(chatID),
@@ -212,17 +211,31 @@ func (c *TelegramChannel) sendWithAttachments(ctx context.Context, chatID int64,
 		document.ParseMode = telego.ModeHTML
 
 		if _, err := c.bot.SendDocument(ctx, document); err != nil {
+			file.Close()
 			logger.ErrorCF("telegram", "HTML parse failed for caption, falling back to plain text", map[string]interface{}{
 				"error": err.Error(),
 			})
-			document.ParseMode = ""
+			
+			// Reopen file for retry
+			file, err = os.Open(attachment.Path)
+			if err != nil {
+				return fmt.Errorf("failed to reopen attachment %s: %w", attachment.Path, err)
+			}
+			
+			document := tu.Document(
+				tu.ID(chatID),
+				tu.File(file),
+			)
 			document.Caption = caption
 			if _, err := c.bot.SendDocument(ctx, document); err != nil {
+				file.Close()
 				return fmt.Errorf("failed to send document %s: %w", attachment.Filename, err)
 			}
 		}
+		
+		file.Close()
 
-		// Only use caption for first attachment
+		// Only use caption for first attachment to avoid duplicate comments
 		htmlCaption = ""
 		caption = ""
 	}

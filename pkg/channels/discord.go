@@ -128,13 +128,22 @@ func (c *DiscordChannel) sendWithAttachments(ctx context.Context, channelID, con
 	done := make(chan error, 1)
 	go func() {
 		files := make([]*discordgo.File, 0, len(attachments))
+		openedFiles := make([]*os.File, 0, len(attachments))
+
+		// Clean up all opened files when done
+		defer func() {
+			for _, f := range openedFiles {
+				f.Close()
+			}
+		}()
+
 		for _, attachment := range attachments {
 			file, err := os.Open(attachment.Path)
 			if err != nil {
 				done <- fmt.Errorf("failed to open attachment %s: %w", attachment.Path, err)
 				return
 			}
-			defer file.Close()
+			openedFiles = append(openedFiles, file)
 
 			files = append(files, &discordgo.File{
 				Name:   attachment.Filename,
