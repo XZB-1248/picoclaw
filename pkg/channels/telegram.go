@@ -157,6 +157,11 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 		c.stopThinking.Delete(msg.ChatID)
 	}
 
+	// If there are attachments, send them
+	if len(msg.Attachments) > 0 {
+		return c.sendWithAttachments(ctx, chatID, msg.Content, msg.Attachments)
+	}
+
 	htmlContent := markdownToTelegramHTML(msg.Content)
 
 	// Try to edit placeholder
@@ -181,6 +186,45 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 		tgMsg.ParseMode = ""
 		_, err = c.bot.SendMessage(ctx, tgMsg)
 		return err
+	}
+
+	return nil
+}
+
+func (c *TelegramChannel) sendWithAttachments(ctx context.Context, chatID int64, caption string, attachments []bus.Attachment) error {
+	// Delete placeholder if exists
+	c.placeholders.Delete(fmt.Sprintf("%d", chatID))
+
+	htmlCaption := markdownToTelegramHTML(caption)
+
+	for _, attachment := range attachments {
+		file, err := os.Open(attachment.Path)
+		if err != nil {
+			return fmt.Errorf("failed to open attachment %s: %w", attachment.Path, err)
+		}
+		defer file.Close()
+
+		document := tu.Document(
+			tu.ID(chatID),
+			tu.File(file),
+		)
+		document.Caption = htmlCaption
+		document.ParseMode = telego.ModeHTML
+
+		if _, err := c.bot.SendDocument(ctx, document); err != nil {
+			logger.ErrorCF("telegram", "HTML parse failed for caption, falling back to plain text", map[string]interface{}{
+				"error": err.Error(),
+			})
+			document.ParseMode = ""
+			document.Caption = caption
+			if _, err := c.bot.SendDocument(ctx, document); err != nil {
+				return fmt.Errorf("failed to send document %s: %w", attachment.Filename, err)
+			}
+		}
+
+		// Only use caption for first attachment
+		htmlCaption = ""
+		caption = ""
 	}
 
 	return nil

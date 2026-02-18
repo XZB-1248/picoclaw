@@ -100,6 +100,11 @@ func (c *DiscordChannel) Send(ctx context.Context, msg bus.OutboundMessage) erro
 		return fmt.Errorf("channel ID is empty")
 	}
 
+	// If there are attachments, send them with the message
+	if len(msg.Attachments) > 0 {
+		return c.sendWithAttachments(ctx, channelID, msg.Content, msg.Attachments)
+	}
+
 	runes := []rune(msg.Content)
 	if len(runes) == 0 {
 		return nil
@@ -114,6 +119,47 @@ func (c *DiscordChannel) Send(ctx context.Context, msg bus.OutboundMessage) erro
 	}
 
 	return nil
+}
+
+func (c *DiscordChannel) sendWithAttachments(ctx context.Context, channelID, content string, attachments []bus.Attachment) error {
+	sendCtx, cancel := context.WithTimeout(ctx, sendTimeout)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		files := make([]*discordgo.File, 0, len(attachments))
+		for _, attachment := range attachments {
+			file, err := os.Open(attachment.Path)
+			if err != nil {
+				done <- fmt.Errorf("failed to open attachment %s: %w", attachment.Path, err)
+				return
+			}
+			defer file.Close()
+
+			files = append(files, &discordgo.File{
+				Name:   attachment.Filename,
+				Reader: file,
+			})
+		}
+
+		messageData := &discordgo.MessageSend{
+			Content: content,
+			Files:   files,
+		}
+
+		_, err := c.session.ChannelMessageSendComplex(channelID, messageData)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			return fmt.Errorf("failed to send discord message with attachments: %w", err)
+		}
+		return nil
+	case <-sendCtx.Done():
+		return fmt.Errorf("send message timeout: %w", sendCtx.Err())
+	}
 }
 
 func (c *DiscordChannel) sendChunk(ctx context.Context, channelID, content string) error {
