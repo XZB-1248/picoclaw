@@ -192,8 +192,20 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 }
 
 func (c *TelegramChannel) sendWithAttachments(ctx context.Context, chatID int64, caption string, attachments []bus.Attachment) error {
-	// Delete placeholder if exists
-	c.placeholders.Delete(fmt.Sprintf("%d", chatID))
+	// Delete placeholder message if exists
+	chatIDStr := fmt.Sprintf("%d", chatID)
+	if pID, ok := c.placeholders.LoadAndDelete(chatIDStr); ok {
+		// Actually delete the "Thinking..." message from Telegram
+		deleteMsg := &telego.DeleteMessageParams{
+			ChatID:    tu.ID(chatID),
+			MessageID: pID.(int),
+		}
+		if err := c.bot.DeleteMessage(ctx, deleteMsg); err != nil {
+			logger.DebugCF("telegram", "Failed to delete placeholder message", map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+	}
 
 	htmlCaption := markdownToTelegramHTML(caption)
 
