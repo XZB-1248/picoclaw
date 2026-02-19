@@ -115,21 +115,25 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]interface{}) 
 	// Parse attachments if provided
 	var attachments []bus.Attachment
 	if attachmentsRaw, ok := args["attachments"].([]interface{}); ok {
-		for _, attachRaw := range attachmentsRaw {
+		for i, attachRaw := range attachmentsRaw {
 			attachMap, ok := attachRaw.(map[string]interface{})
 			if !ok {
-				continue // Skip invalid attachment entries
+				return ErrorResult(fmt.Sprintf("attachments[%d]: expected an object, got %T", i, attachRaw))
 			}
 
 			path, pathOk := attachMap["path"].(string)
+			if !pathOk || path == "" {
+				return ErrorResult(fmt.Sprintf("attachments[%d]: missing or invalid \"path\" field", i))
+			}
+
 			filename, filenameOk := attachMap["filename"].(string)
-			if !pathOk || !filenameOk {
-				continue // Skip invalid attachment entries
+			if !filenameOk || filename == "" {
+				return ErrorResult(fmt.Sprintf("attachments[%d]: missing or invalid \"filename\" field", i))
 			}
 
 			resolvedPath, err := validatePath(path, t.allowedDir, t.restrict)
 			if err != nil {
-				return ErrorResult(err.Error())
+				return ErrorResult(fmt.Sprintf("attachments[%d]: %v", i, err))
 			}
 
 			attachments = append(attachments, bus.Attachment{
