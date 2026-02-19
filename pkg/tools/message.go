@@ -3,9 +3,11 @@ package tools
 import (
 	"context"
 	"fmt"
+
+	"github.com/sipeed/picoclaw/pkg/bus"
 )
 
-type SendCallback func(channel, chatID, content string) error
+type SendCallback func(channel, chatID, content string, attachments []bus.Attachment) error
 
 type MessageTool struct {
 	sendCallback   SendCallback
@@ -23,7 +25,7 @@ func (t *MessageTool) Name() string {
 }
 
 func (t *MessageTool) Description() string {
-	return "Send a message to user on a chat channel. Use this when you want to communicate something."
+	return "Send a message to user on a chat channel. Use this when you want to communicate something. When sending files, the message content will be sent as a separate text message, and files will be attached separately."
 }
 
 func (t *MessageTool) Parameters() map[string]interface{} {
@@ -32,7 +34,7 @@ func (t *MessageTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"content": map[string]interface{}{
 				"type":        "string",
-				"description": "The message content to send",
+				"description": "The message content to send. When attachments are included, this will be sent as a separate text message.",
 			},
 			"channel": map[string]interface{}{
 				"type":        "string",
@@ -41,6 +43,24 @@ func (t *MessageTool) Parameters() map[string]interface{} {
 			"chat_id": map[string]interface{}{
 				"type":        "string",
 				"description": "Optional: target chat/user ID",
+			},
+			"attachments": map[string]interface{}{
+				"type":        "array",
+				"description": "Optional: files to attach to the message",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"path": map[string]interface{}{
+							"type":        "string",
+							"description": "Absolute file path to attach",
+						},
+						"filename": map[string]interface{}{
+							"type":        "string",
+							"description": "Filename to use for the attachment",
+						},
+					},
+					"required": []string{"path", "filename"},
+				},
 			},
 		},
 		"required": []string{"content"},
@@ -86,7 +106,24 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]interface{}) 
 		return &ToolResult{ForLLM: "Message sending not configured", IsError: true}
 	}
 
-	if err := t.sendCallback(channel, chatID, content); err != nil {
+	// Parse attachments if provided
+	var attachments []bus.Attachment
+	if attachmentsRaw, ok := args["attachments"].([]interface{}); ok {
+		for _, attachRaw := range attachmentsRaw {
+			if attachMap, ok := attachRaw.(map[string]interface{}); ok {
+				path, pathOk := attachMap["path"].(string)
+				filename, filenameOk := attachMap["filename"].(string)
+				if pathOk && filenameOk {
+					attachments = append(attachments, bus.Attachment{
+						Path:     path,
+						Filename: filename,
+					})
+				}
+			}
+		}
+	}
+
+	if err := t.sendCallback(channel, chatID, content, attachments); err != nil {
 		return &ToolResult{
 			ForLLM:  fmt.Sprintf("sending message: %v", err),
 			IsError: true,

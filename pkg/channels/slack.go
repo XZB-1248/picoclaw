@@ -119,6 +119,11 @@ func (c *SlackChannel) Send(ctx context.Context, msg bus.OutboundMessage) error 
 		return fmt.Errorf("invalid slack chat ID: %s", msg.ChatID)
 	}
 
+	// If there are attachments, send them
+	if len(msg.Attachments) > 0 {
+		return c.sendWithAttachments(ctx, channelID, threadTS, msg.Content, msg.Attachments)
+	}
+
 	opts := []slack.MsgOption{
 		slack.MsgOptionText(msg.Content, false),
 	}
@@ -143,6 +148,49 @@ func (c *SlackChannel) Send(ctx context.Context, msg bus.OutboundMessage) error 
 	logger.DebugCF("slack", "Message sent", map[string]interface{}{
 		"channel_id": channelID,
 		"thread_ts":  threadTS,
+	})
+
+	return nil
+}
+
+func (c *SlackChannel) sendWithAttachments(ctx context.Context, channelID, threadTS, content string, attachments []bus.Attachment) error {
+	for _, attachment := range attachments {
+		file, err := os.Open(attachment.Path)
+		if err != nil {
+			return fmt.Errorf("failed to open attachment %s: %w", attachment.Path, err)
+		}
+
+		params := slack.UploadFileV2Parameters{
+			Channel:         channelID,
+			Filename:        attachment.Filename,
+			Reader:          file,
+			InitialComment:  content,
+			ThreadTimestamp: threadTS,
+		}
+
+		_, err = c.api.UploadFileV2Context(ctx, params)
+		file.Close()
+		
+		if err != nil {
+			return fmt.Errorf("failed to upload file %s: %w", attachment.Filename, err)
+		}
+
+		// Only use content for first attachment to avoid duplicate comments
+		content = ""
+	}
+
+	if ref, ok := c.pendingAcks.LoadAndDelete(channelID); ok {
+		msgRef := ref.(slackMessageRef)
+		c.api.AddReaction("white_check_mark", slack.ItemRef{
+			Channel:   msgRef.ChannelID,
+			Timestamp: msgRef.Timestamp,
+		})
+	}
+
+	logger.DebugCF("slack", "Message with attachments sent", map[string]interface{}{
+		"channel_id":       channelID,
+		"thread_ts":        threadTS,
+		"attachment_count": len(attachments),
 	})
 
 	return nil
