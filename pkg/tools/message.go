@@ -25,7 +25,7 @@ func (t *MessageTool) Name() string {
 }
 
 func (t *MessageTool) Description() string {
-	return "Send a message to user on a chat channel. Use this when you want to communicate something."
+	return "Send a message to user on a chat channel. Use this when you want to communicate something. When sending files with attachments, use your final complete response as the content/caption, not intermediate progress messages."
 }
 
 func (t *MessageTool) Parameters() map[string]interface{} {
@@ -34,7 +34,7 @@ func (t *MessageTool) Parameters() map[string]interface{} {
 		"properties": map[string]interface{}{
 			"content": map[string]interface{}{
 				"type":        "string",
-				"description": "The message content to send",
+				"description": "The message content to send. When attachments are included, this will be used as the file caption, so use your final complete response, not a progress message.",
 			},
 			"channel": map[string]interface{}{
 				"type":        "string",
