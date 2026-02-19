@@ -155,24 +155,28 @@ func (c *SlackChannel) Send(ctx context.Context, msg bus.OutboundMessage) error 
 
 func (c *SlackChannel) sendWithAttachments(ctx context.Context, channelID, threadTS, content string, attachments []bus.Attachment) error {
 	for _, attachment := range attachments {
-		file, err := os.Open(attachment.Path)
-		if err != nil {
-			return fmt.Errorf("failed to open attachment %s: %w", attachment.Path, err)
-		}
+		uploadErr := func() error {
+			file, err := os.Open(attachment.Path)
+			if err != nil {
+				return fmt.Errorf("failed to open attachment %s: %w", attachment.Path, err)
+			}
+			defer file.Close()
 
-		params := slack.UploadFileV2Parameters{
-			Channel:         channelID,
-			Filename:        attachment.Filename,
-			Reader:          file,
-			InitialComment:  content,
-			ThreadTimestamp: threadTS,
-		}
+			params := slack.UploadFileV2Parameters{
+				Channel:         channelID,
+				Filename:        attachment.Filename,
+				Reader:          file,
+				InitialComment:  content,
+				ThreadTimestamp: threadTS,
+			}
 
-		_, err = c.api.UploadFileV2Context(ctx, params)
-		defer file.Close()
-
-		if err != nil {
-			return fmt.Errorf("failed to upload file %s: %w", attachment.Filename, err)
+			if _, err = c.api.UploadFileV2Context(ctx, params); err != nil {
+				return fmt.Errorf("failed to upload file %s: %w", attachment.Filename, err)
+			}
+			return nil
+		}()
+		if uploadErr != nil {
+			return uploadErr
 		}
 
 		// Only use content for first attachment to avoid duplicate comments
