@@ -9,7 +9,7 @@ import (
 )
 
 func TestMessageTool_Execute_Success(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	tool.SetContext("test-channel", "test-chat-id")
 
 	var sentChannel, sentChatID, sentContent string
@@ -66,7 +66,7 @@ func TestMessageTool_Execute_Success(t *testing.T) {
 }
 
 func TestMessageTool_Execute_WithCustomChannel(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	tool.SetContext("default-channel", "default-chat-id")
 
 	var sentChannel, sentChatID string
@@ -102,7 +102,7 @@ func TestMessageTool_Execute_WithCustomChannel(t *testing.T) {
 }
 
 func TestMessageTool_Execute_SendFailure(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	tool.SetContext("test-channel", "test-chat-id")
 
 	sendErr := errors.New("network error")
@@ -139,7 +139,7 @@ func TestMessageTool_Execute_SendFailure(t *testing.T) {
 }
 
 func TestMessageTool_Execute_MissingContent(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	tool.SetContext("test-channel", "test-chat-id")
 
 	ctx := context.Background()
@@ -157,7 +157,7 @@ func TestMessageTool_Execute_MissingContent(t *testing.T) {
 }
 
 func TestMessageTool_Execute_NoTargetChannel(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	// No SetContext called, so defaultChannel and defaultChatID are empty
 
 	tool.SetSendCallback(func(channel, chatID, content string, attachments []bus.Attachment) error {
@@ -181,7 +181,7 @@ func TestMessageTool_Execute_NoTargetChannel(t *testing.T) {
 }
 
 func TestMessageTool_Execute_NotConfigured(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	tool.SetContext("test-channel", "test-chat-id")
 	// No SetSendCallback called
 
@@ -202,14 +202,14 @@ func TestMessageTool_Execute_NotConfigured(t *testing.T) {
 }
 
 func TestMessageTool_Name(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	if tool.Name() != "message" {
 		t.Errorf("Expected name 'message', got '%s'", tool.Name())
 	}
 }
 
 func TestMessageTool_Description(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	desc := tool.Description()
 	if desc == "" {
 		t.Error("Description should not be empty")
@@ -217,7 +217,7 @@ func TestMessageTool_Description(t *testing.T) {
 }
 
 func TestMessageTool_Parameters(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	params := tool.Parameters()
 
 	// Verify parameters structure
@@ -275,7 +275,7 @@ func TestMessageTool_Parameters(t *testing.T) {
 }
 
 func TestMessageTool_Execute_WithAttachments(t *testing.T) {
-	tool := NewMessageTool()
+	tool := NewMessageTool("", false)
 	tool.SetContext("test-channel", "test-chat-id")
 
 	var sentChannel, sentChatID, sentContent string
