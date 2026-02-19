@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 )
@@ -58,14 +59,14 @@ func (t *MessageTool) Parameters() map[string]interface{} {
 					"properties": map[string]interface{}{
 						"path": map[string]interface{}{
 							"type":        "string",
-							"description": "Absolute file path to attach",
+							"description": "File path to attach (absolute or relative to workspace)",
 						},
 						"filename": map[string]interface{}{
 							"type":        "string",
-							"description": "Filename to use for the attachment",
+							"description": "Filename to use for the attachment (defaults to the base name of the path)",
 						},
 					},
-					"required": []string{"path", "filename"},
+					"required": []string{"path"},
 				},
 			},
 		},
@@ -128,7 +129,7 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]interface{}) 
 
 			filename, filenameOk := attachMap["filename"].(string)
 			if !filenameOk || filename == "" {
-				return ErrorResult(fmt.Sprintf("attachments[%d]: missing or invalid \"filename\" field", i))
+				filename = filepath.Base(path) // Default to the base name of the file if filename not provided
 			}
 
 			resolvedPath, err := validatePath(path, t.allowedDir, t.restrict)
