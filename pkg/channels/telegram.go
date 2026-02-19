@@ -157,6 +157,11 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 		c.stopThinking.Delete(msg.ChatID)
 	}
 
+	// If there are attachments, send them
+	if len(msg.Attachments) > 0 {
+		return c.sendWithAttachments(ctx, chatID, msg.Content, msg.Attachments)
+	}
+
 	htmlContent := markdownToTelegramHTML(msg.Content)
 
 	// Try to edit placeholder
@@ -181,6 +186,71 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 		tgMsg.ParseMode = ""
 		_, err = c.bot.SendMessage(ctx, tgMsg)
 		return err
+	}
+
+	return nil
+}
+
+func (c *TelegramChannel) sendWithAttachments(ctx context.Context, chatID int64, content string, attachments []bus.Attachment) error {
+	chatIDStr := fmt.Sprintf("%d", chatID)
+	htmlContent := markdownToTelegramHTML(content)
+
+	// Try to edit placeholder with the message content
+	// This shows the LLM's response as a text message
+	if pID, ok := c.placeholders.Load(chatIDStr); ok {
+		c.placeholders.Delete(chatIDStr)
+		editMsg := tu.EditMessageText(tu.ID(chatID), pID.(int), htmlContent)
+		editMsg.ParseMode = telego.ModeHTML
+
+		if _, err := c.bot.EditMessageText(ctx, editMsg); err != nil {
+			logger.DebugCF("telegram", "Failed to edit placeholder, will send new message", map[string]interface{}{
+				"error": err.Error(),
+			})
+			// Fallback to sending new message if edit fails
+			tgMsg := tu.Message(tu.ID(chatID), htmlContent)
+			tgMsg.ParseMode = telego.ModeHTML
+			if _, err = c.bot.SendMessage(ctx, tgMsg); err != nil {
+				logger.ErrorCF("telegram", "HTML parse failed, falling back to plain text", map[string]interface{}{
+					"error": err.Error(),
+				})
+				tgMsg.ParseMode = ""
+				tgMsg.Text = content
+				c.bot.SendMessage(ctx, tgMsg)
+			}
+		}
+	} else {
+		// No placeholder exists, send as new message
+		tgMsg := tu.Message(tu.ID(chatID), htmlContent)
+		tgMsg.ParseMode = telego.ModeHTML
+		if _, err := c.bot.SendMessage(ctx, tgMsg); err != nil {
+			logger.ErrorCF("telegram", "HTML parse failed, falling back to plain text", map[string]interface{}{
+				"error": err.Error(),
+			})
+			tgMsg.ParseMode = ""
+			tgMsg.Text = content
+			c.bot.SendMessage(ctx, tgMsg)
+		}
+	}
+
+	// Now send files as separate messages
+	for _, attachment := range attachments {
+		file, err := os.Open(attachment.Path)
+		if err != nil {
+			return fmt.Errorf("failed to open attachment %s: %w", attachment.Path, err)
+		}
+
+		document := tu.Document(
+			tu.ID(chatID),
+			tu.File(file),
+		)
+		document.Caption = attachment.Filename
+
+		if _, err := c.bot.SendDocument(ctx, document); err != nil {
+			file.Close()
+			return fmt.Errorf("failed to send document %s: %w", attachment.Filename, err)
+		}
+
+		file.Close()
 	}
 
 	return nil
