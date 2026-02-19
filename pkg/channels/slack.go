@@ -121,7 +121,7 @@ func (c *SlackChannel) Send(ctx context.Context, msg bus.OutboundMessage) error 
 
 	// If there are attachments, send them
 	if len(msg.Attachments) > 0 {
-		return c.sendWithAttachments(ctx, channelID, threadTS, msg.Content, msg.Attachments)
+		return c.sendWithAttachments(ctx, msg.ChatID, channelID, threadTS, msg.Content, msg.Attachments)
 	}
 
 	opts := []slack.MsgOption{
@@ -153,7 +153,7 @@ func (c *SlackChannel) Send(ctx context.Context, msg bus.OutboundMessage) error 
 	return nil
 }
 
-func (c *SlackChannel) sendWithAttachments(ctx context.Context, channelID, threadTS, content string, attachments []bus.Attachment) error {
+func (c *SlackChannel) sendWithAttachments(ctx context.Context, chatID, channelID, threadTS, content string, attachments []bus.Attachment) error {
 	for _, attachment := range attachments {
 		uploadErr := func() error {
 			file, err := os.Open(attachment.Path)
@@ -183,7 +183,7 @@ func (c *SlackChannel) sendWithAttachments(ctx context.Context, channelID, threa
 		content = ""
 	}
 
-	if ref, ok := c.pendingAcks.LoadAndDelete(channelID); ok {
+	if ref, ok := c.pendingAcks.LoadAndDelete(chatID); ok {
 		msgRef := ref.(slackMessageRef)
 		c.api.AddReaction("white_check_mark", slack.ItemRef{
 			Channel:   msgRef.ChannelID,
