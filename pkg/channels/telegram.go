@@ -215,7 +215,12 @@ func (c *TelegramChannel) sendWithAttachments(ctx context.Context, chatID int64,
 				})
 				tgMsg.ParseMode = ""
 				tgMsg.Text = content
-				c.bot.SendMessage(ctx, tgMsg)
+				if _, err = c.bot.SendMessage(ctx, tgMsg); err != nil {
+					logger.ErrorCF("telegram", "Failed to send message with attachments", map[string]interface{}{
+						"error": err.Error(),
+					})
+					return fmt.Errorf("failed to send message: %w", err)
+				}
 			}
 		}
 	} else {
@@ -228,29 +233,38 @@ func (c *TelegramChannel) sendWithAttachments(ctx context.Context, chatID int64,
 			})
 			tgMsg.ParseMode = ""
 			tgMsg.Text = content
-			c.bot.SendMessage(ctx, tgMsg)
+			if _, err = c.bot.SendMessage(ctx, tgMsg); err != nil {
+				logger.ErrorCF("telegram", "Failed to send message with attachments", map[string]interface{}{
+					"error": err.Error(),
+				})
+				return fmt.Errorf("failed to send message: %w", err)
+			}
 		}
 	}
 
 	// Now send files as separate messages
 	for _, attachment := range attachments {
-		file, err := os.Open(attachment.Path)
-		if err != nil {
-			return fmt.Errorf("failed to open attachment %s: %w", attachment.Path, err)
+		uploadErr := func(att bus.Attachment) error {
+			file, err := os.Open(att.Path)
+			if err != nil {
+				return fmt.Errorf("failed to open attachment %s: %w", att.Path, err)
+			}
+			defer file.Close()
+
+			document := tu.Document(
+				tu.ID(chatID),
+				tu.File(file),
+			)
+			document.Caption = att.Filename
+
+			if _, err := c.bot.SendDocument(ctx, document); err != nil {
+				return fmt.Errorf("failed to send document %s: %w", att.Filename, err)
+			}
+			return nil
+		}(attachment)
+		if uploadErr != nil {
+			return uploadErr
 		}
-
-		document := tu.Document(
-			tu.ID(chatID),
-			tu.File(file),
-		)
-		document.Caption = attachment.Filename
-
-		if _, err := c.bot.SendDocument(ctx, document); err != nil {
-			file.Close()
-			return fmt.Errorf("failed to send document %s: %w", attachment.Filename, err)
-		}
-
-		file.Close()
 	}
 
 	return nil
